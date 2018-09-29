@@ -9,6 +9,7 @@
 <!-- /TOC -->
 
 Requirement is included in `Assignment1.pdf`
+Analysis and report is included in `report.pdf`
 
 ## Image Transition
 
