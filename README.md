@@ -1,5 +1,15 @@
 # MultimediaCourseAssignment
 
+<!-- TOC -->
+
+- [MultimediaCourseAssignment](#multimediacourseassignment)
+  - [Developing Environment](#developing-environment)
+  - [Tutorial](#tutorial)
+  - [Homework1](#homework1)
+  - [Homework2](#homework2)
+
+<!-- /TOC -->
+
 ## Developing Environment
 
 - Windows
@@ -13,5 +23,17 @@ Strongly recommend you know the grammar of [python](https://www.liaoxuefeng.com/
 
 ## Homework1
 
-- Image transition
-- Median-Cut Algorithm
+- Coding
+
+  - Image transition
+  - Median-Cut Algorithm
+
+## Homework2
+
+- Theory
+
+  - Adaptive Huffman Coding Problem
+
+- Coding
+
+  - JPEG Compression
