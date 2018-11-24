@@ -11,6 +11,14 @@ import numpy as np
 import cv2 as cv
 import math
 import copy
+import HuffmanEncode
+
+DCFrequency = {}
+DCHuffmanTable = {}
+DCBits = 0
+ACFrequency = {}
+ACHuffmanTable = {}
+ACBits = 0
 
 class CV_RGBChannel(Enum):
 
@@ -67,6 +75,10 @@ CHROMA_QUANTIFY_MATRIX = [
 
 def ProcessLog(msg):
   print 15*'-' + msg + 15*'-' + '\n'
+
+def printDict(dict):
+  for key, val in dict.items():
+    print key, ':', val
 
 def createMatrix(m,n):
   '''
@@ -395,7 +407,7 @@ def Distortion(src, res, imgPath):
   G_mse = round(G_mse / (row * col))
   B_mse = round(B_mse / (row * col))
 
-  print 15*'-' + 'Distortion For ' + imgPath + 15*'-'
+  print 'Distortion For ' + imgPath
   print 'R Channel MSE: ', R_mse, 'R Channel SNR: ', R_snr
   print 'G Channel MSE: ', G_mse, 'G Channel SNR: ', G_snr
   print 'B Channel MSE: ', B_mse, 'B Channel SNR: ', B_snr
@@ -638,10 +650,72 @@ def Merge_RLC_DPCM(rlc, dpcm):
     zig.append(temp)
   return zig
 
+def DCFrequencyCount(array, DCFrequency):
+  '''
+  Calculate the Huffman Encoding info for DC
+  '''
+  global DCBits
+  for i in range(0, len(array)):
+    DCBits += len(bin(abs(array[i])).replace('0b',''))
+    size = (int)((array[i] + 1) / 2)
+    if size in DCFrequency:
+      DCFrequency[size] += 1
+    else:
+      DCFrequency[size] = 1
+  DCFrequency = sorted(DCFrequency.items(),key=lambda item:item[1],reverse=False)
+
+def DCHuffmanEncoding(frequency, huffmanTable):
+  '''
+  Perform Huffman Encoding for AC
+  '''
+  global DCBits
+  HuffmanEncode.getHuffmanCode(frequency, huffmanTable)
+  for key, value in frequency.items():
+    DCBits += len(huffmanTable[key]) * value
+
+def ACFrequencyCount(array, ACFrequency):
+  '''
+  Calculate the Huffman Encoding info for AC
+  '''
+  global ACBits
+  for i in range(0, len(array)):
+    for j in range(0, len(array[i])):
+      ACBits += len(bin(abs(array[i][j][1])).replace('0b',''))
+      size =  (int)((array[i][j][1] + 1) / 2)
+      symbol_1 = (array[i][j][0] << 4) + size
+      if symbol_1 not in ACFrequency:
+        ACFrequency[symbol_1] = 1
+      else:
+        ACFrequency[symbol_1] += 1
+
+def ACHuffmanEncoding(frequency, huffmanTable):
+  '''
+  Perform Huffman Encoding for AC
+  '''
+  global ACBits
+  HuffmanEncode.getHuffmanCode(frequency, huffmanTable)
+  for key, value in frequency.items():
+    ACBits += len(huffmanTable[key]) * value
+
+def CompressionRate(src, imgPath):
+  '''
+  Calculate the compression rate
+  '''
+  global ACBits
+  global DCBits
+  row = src.shape[0]
+  col = src.shape[1]
+  origin = row * col * 24
+  compression = ACBits * DCBits
+  print 'Compression Rate For ' + imgPath
+  print 'origin bits: ', origin
+  print 'compression bits: ', compression
+  print 'Compression Rate: %.2f' % (float(origin) / float(compression))
+
 
 ProcessLog(' Start Read Image ')
 # Origin photo
-imgPath = '../img/cartoon.jpg'
+imgPath = '../img/animal.jpg'
 img = cv.imread(imgPath, cv.IMREAD_COLOR)
 img = cv.resize(img,(1000,720),interpolation = cv.INTER_CUBIC)
 img_c = copy.deepcopy(img)
@@ -672,6 +746,7 @@ ProcessLog(' Start Quantization ')
 quant_img = QuantifyImg(dct_img)
 ProcessLog(' End Quantization ')
 
+
 ProcessLog(' Start ZigZag Scan ')
 # Zigzag scan image
 Y_zig, Cb_zig, Cr_zig = ZigZagImg(quant_img)
@@ -695,17 +770,23 @@ ProcessLog(' End DPCM for DC Signal ')
 
 ProcessLog(' Start Entropy Coding for RLC ')
 # Entropy Coding for RLC
-# Y_rlc = RLC_Zig(Y_zig)
-# Cb_rlc = RLC_Zig(Cb_zig)
-# Cr_rlc = RLC_Zig(Cr_zig)
+ACFrequencyCount(Y_rlc, ACFrequency)
+ACFrequencyCount(Cb_rlc, ACFrequency)
+ACFrequencyCount(Cr_rlc, ACFrequency)
+ACHuffmanEncoding(ACFrequency, ACHuffmanTable)
+print 'AC HuffmanTable'
+printDict(ACHuffmanTable)
 ProcessLog(' End Entropy Coding for RLC ')
 
 
 ProcessLog(' Start Entropy Coding for DPCM ')
 # Entropy Coding for DPCM
-# Y_dpcm = DPCM(Y_zig)
-# Cb_dpcm = DPCM(Cb_zig)
-# Cr_dpcm = DPCM(Cr_zig)
+DCFrequencyCount(Y_dpcm, DCFrequency)
+DCFrequencyCount(Cb_dpcm, DCFrequency)
+DCFrequencyCount(Cr_dpcm, DCFrequency)
+DCHuffmanEncoding(DCFrequency, DCHuffmanTable)
+print 'DC HuffmanTable'
+printDict(DCHuffmanTable)
 ProcessLog(' End Entropy Coding for DPCM ')
 
 
@@ -756,11 +837,16 @@ ProcessLog(' Start Reconstruct Image into RGB')
 reconstruct_img = YCbCrtoRGBSpace(idct_img)
 ProcessLog(' End Reconstruct Image into RGB')
 
-
 ProcessLog(' Start Calculating Distortion ')
 # Distortion Evaluation
-Distortion(img_c, reconstruct_img, imgPath)
+Distortion(img_c, reconstruct_img, imgPath[7:-5])
 ProcessLog(' End Calculating Distortion ')
+
+
+ProcessLog(' Start Calculating Compression Rate ')
+# Compression Rate Evaluation
+CompressionRate(img_c, imgPath[7:-5])
+ProcessLog(' End Calculating Compression Rate ')
 
 
 ProcessLog(' Display Result Image')
