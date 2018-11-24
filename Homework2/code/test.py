@@ -204,3 +204,55 @@ def TEST_QUANTIFY_DEQUANTIFY(img):
     
 #     y += 8
 #   x += 8
+
+def TEST_ZIG_DEZIG(img):
+  Y_zig = []
+  Cb_zig = []
+  Cr_zig = []
+  row = img.shape[0]
+  col = img.shape[1]
+  x = 0
+  y = 0
+  t = 0
+  while (x < row - 7):
+    while (y < col - 7):
+      y_matrix = createMatrix(8, 8)
+      cb_matrix = createMatrix(8, 8)
+      cr_matrix = createMatrix(8, 8)
+      print(15 * '-' + 'ZIGZAG START' + 15 * '-')
+      for i in range(0, 8):
+        for j in range(0, 8):
+          y_matrix[i][j] = img.item(x + i, y + j, CV_YCbCrChannel.Y.value)
+          cb_matrix[i][j] = img.item(x + i, y + j, CV_YCbCrChannel.Cb.value)
+          cr_matrix[i][j] = img.item(x + i, y + j, CV_YCbCrChannel.Cr.value)
+        print y_matrix[i]
+      Y_zig.append(ZigZag(y_matrix))
+      Cb_zig.append(ZigZag(cb_matrix))
+      Cr_zig.append(ZigZag(cr_matrix))
+      print(15 * '-' + 'ZIGZAG DONE' + 15 * '-')
+      print Y_zig[t]
+      print(15 * '-' + 'DEZIGZAG START' + 15 * '-')
+      y_matrix = DeZigZag(Y_zig[t])
+      for i in range(0, 8):
+        print y_matrix[i]
+      t += 1
+      y += 8
+    x += 8
+  return Y_zig, Cb_zig, Cr_zig
+
+def TEST_RLC_DERLC(zig):
+  '''
+  RLC AC signal in Zig
+  '''
+  zig_rlc = []
+  dezig = []
+  for i in range(0, len(zig)):
+    print(15 * '-' + 'RLC START' + 15 * '-')
+    print zig[i]
+    zig_rlc.append(RLC(zig[i]))
+    print(15 * '-' + 'RLC DONE' + 15 * '-')
+    print zig_rlc[i]
+    print(15 * '-' + 'DERLC START' + 15 * '-')
+    dezig.append(DeRLC(zig_rlc[i]))
+    print dezig[i]
+  return zig_rlc

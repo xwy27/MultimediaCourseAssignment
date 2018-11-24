@@ -65,6 +65,8 @@ CHROMA_QUANTIFY_MATRIX = [
   [99,99,99,99,99,99,99,99]
 ]
 
+def ProcessLog(msg):
+  print 15*'-' + msg + 15*'-' + '\n'
 
 def createMatrix(m,n):
   '''
@@ -366,13 +368,13 @@ def DeQuantifyImg(img):
     x += 8
   return img
 
-def LossDegree(src, res):
+def Distortion(src, res, imgPath):
   '''
   Calculate the distortion of RGB
   '''
-  R_loss = 0
-  G_loss = 0
-  B_loss = 0
+  R_mse = 0
+  G_mse = 0
+  B_mse = 0
   R_snr = 0
   G_snr = 0
   B_snr = 0
@@ -380,58 +382,389 @@ def LossDegree(src, res):
   col = src.shape[1]
   for i in range(0, row):
     for j in range(0, col):
-      R_loss += math.pow(src.item(i, j, CV_RGBChannel.RED.value) - res.item(i, j, CV_RGBChannel.RED.value), 2)
+      R_mse += math.pow(src.item(i, j, CV_RGBChannel.RED.value) - res.item(i, j, CV_RGBChannel.RED.value), 2)
       R_snr += math.pow(src.item(i, j, CV_RGBChannel.RED.value), 2)
-      G_loss += math.pow(src.item(i, j, CV_RGBChannel.GREEN.value) - res.item(i, j, CV_RGBChannel.GREEN.value), 2)
+      G_mse += math.pow(src.item(i, j, CV_RGBChannel.GREEN.value) - res.item(i, j, CV_RGBChannel.GREEN.value), 2)
       G_snr += math.pow(src.item(i, j, CV_RGBChannel.GREEN.value), 2)
-      B_loss += math.pow(src.item(i, j, CV_RGBChannel.BLUE.value) - res.item(i, j, CV_RGBChannel.BLUE.value), 2)
+      B_mse += math.pow(src.item(i, j, CV_RGBChannel.BLUE.value) - res.item(i, j, CV_RGBChannel.BLUE.value), 2)
       B_snr += math.pow(src.item(i, j, CV_RGBChannel.BLUE.value), 2)
-      # print(src.item(i, j, CV_RGBChannel.BLUE.value), res.item(i, j, CV_RGBChannel.BLUE.value))
-  R_snr = 10*math.log10(R_snr / R_loss)
-  G_snr = 10*math.log10(G_snr / G_loss)
-  B_snr = 10*math.log10(B_snr / B_loss)
-  R_loss = round(R_loss / (row * col))
-  G_loss = round(G_loss / (row * col))
-  B_loss = round(B_loss / (row * col))
-  return R_loss, R_snr, G_loss, G_snr, B_loss, B_snr
+  R_snr = 10*math.log10(R_snr / R_mse)
+  G_snr = 10*math.log10(G_snr / G_mse)
+  B_snr = 10*math.log10(B_snr / B_mse)
+  R_mse = round(R_mse / (row * col))
+  G_mse = round(G_mse / (row * col))
+  B_mse = round(B_mse / (row * col))
 
+  print 15*'-' + 'Distortion For ' + imgPath + 15*'-'
+  print 'R Channel MSE: ', R_mse, 'R Channel SNR: ', R_snr
+  print 'G Channel MSE: ', G_mse, 'G Channel SNR: ', G_snr
+  print 'B Channel MSE: ', B_mse, 'B Channel SNR: ', B_snr
+
+def ZigZag(matrix):
+  '''
+  Z scan a 8*8 matrix and returns a z scan array
+  '''
+  ZigZag = []
+  i = 0
+  j = 0
+  tag = 1 # 1:right, 2:right-down, 3:down, 4:left-up
+  # (0, 0) to (7, 0)
+  for t in range(0, 36):
+    ZigZag.append(matrix[i][j])
+    if (tag == 1):
+      j += 1
+      tag = 2
+    elif (tag == 3):
+      if (i < 7):
+        i += 1
+        tag = 4
+      else:
+        tag = 1
+    elif (tag == 2):
+      i += 1
+      j -= 1
+      tag = 3 if (j ==0) else 2
+    elif (tag == 4):
+      j += 1
+      i -= 1
+      tag = 1 if (i == 0) else 4
+  
+  j += 1
+  tag = 4
+  # (7, 1) to (7, 7)
+  for t in range(36, 64):
+    ZigZag.append(matrix[i][j])
+    if (tag == 4):
+      i -= 1
+      j += 1
+      tag = 3 if (j == 7) else 4
+    elif (tag == 3):
+      i += 1
+      tag = 2
+    elif (tag == 2):
+      i += 1
+      j -= 1
+      tag = 1 if (i == 7) else 2
+    elif (tag == 1):
+      j += 1
+      tag = 4
+
+  return ZigZag
+
+def DeZigZag(array):
+  '''
+  Z scan the 8 * 8 matrix and put item in array
+  in order to recover the matrix from z scan array
+  '''
+  matrix = createMatrix(8, 8)
+  i = 0
+  j = 0
+  tag = 1 # 1:right, 2:right-down, 3:down, 4:left-up
+  # (0, 0) to (7, 0)
+  for t in range(0, 36):
+    matrix[i][j] = array[t]
+    if (tag == 1):
+      j += 1
+      tag = 2
+    elif (tag == 3):
+      if (i < 7):
+        i += 1
+        tag = 4
+      else:
+        tag = 1
+    elif (tag == 2):
+      i += 1
+      j -= 1
+      tag = 3 if (j ==0) else 2
+    elif (tag == 4):
+      j += 1
+      i -= 1
+      tag = 1 if (i == 0) else 4
+  
+  j += 1
+  tag = 4
+  # (7, 1) to (7, 7)
+  for t in range(36, 64):
+    matrix[i][j] = array[t]
+    if (tag == 4):
+      i -= 1
+      j += 1
+      tag = 3 if (j == 7) else 4
+    elif (tag == 3):
+      i += 1
+      tag = 2
+    elif (tag == 2):
+      i += 1
+      j -= 1
+      tag = 1 if (i == 7) else 2
+    elif (tag == 1):
+      j += 1
+      tag = 4
+
+  return matrix
+
+def ZigZagImg(img):
+  '''
+  Z scan the image
+  '''
+  Y_zig = []
+  Cb_zig = []
+  Cr_zig = []
+  row = img.shape[0]
+  col = img.shape[1]
+  x = 0
+  y = 0
+  while (x < row - 7):
+    while (y < col - 7):
+      y_matrix = createMatrix(8, 8)
+      cb_matrix = createMatrix(8, 8)
+      cr_matrix = createMatrix(8, 8)
+      for i in range(0, 8):
+        for j in range(0, 8):
+          y_matrix[i][j] = img.item(x + i, y + j, CV_YCbCrChannel.Y.value)
+          cb_matrix[i][j] = img.item(x + i, y + j, CV_YCbCrChannel.Cb.value)
+          cr_matrix[i][j] = img.item(x + i, y + j, CV_YCbCrChannel.Cr.value)
+      Y_zig.append(ZigZag(y_matrix))
+      Cb_zig.append(ZigZag(cb_matrix))
+      Cr_zig.append(ZigZag(cr_matrix))
+      y += 8
+    x += 8
+  return Y_zig, Cb_zig, Cr_zig
+
+def DeZigZagImg(img, Y_zig, Cb_zig, Cr_zig):
+  '''
+  Recover img from Z scan
+  '''
+  row = img.shape[0]
+  col = img.shape[1]
+  x = 0
+  y = 0
+  while (x < row - 7):
+    while (y < col - 7):
+      for t in range(0, len(Y_zig)):
+        y_matrix = DeZigZag(Y_zig[t])
+        cb_matrix = DeZigZag(Cb_zig[t])
+        cr_matrix = DeZigZag(Cr_zig[t])
+        for i in range(0, 8):
+          for j in range(0, 8):
+            img.itemset((x + i, y + j, CV_YCbCrChannel.Y.value), y_matrix[i][j])
+            img.itemset((x + i, y + j, CV_YCbCrChannel.Cb.value), cb_matrix[i][j])
+            img.itemset((x + i, y + j, CV_YCbCrChannel.Cr.value), cr_matrix[i][j])
+      y += 8
+    x += 8
+  return img
+
+def RLC(array):
+  '''
+  Return the run-length encode of the array
+  '''
+  count = 0
+  num = 0
+  rlc = []
+  for i in range(1, len(array)):
+    if (array[i] != 0):
+      rlc.append([count, array[i]])
+      count = 0
+    else:
+      count += 1
+  rlc.append([0, 0])
+  return rlc
+
+def DeRLC(array):
+  '''
+  Return the array encoded by rlc
+  '''
+  res = []
+  for i in range(0, len(array)):
+    if (array[i][1] == 0):
+      for t in range(len(res), 63):
+        res.append(0)
+    else:
+      for j in range(0, array[i][0]):
+        res.append(0)
+      res.append(array[i][1])
+  return res
+
+def RLC_Zig(zig):
+  '''
+  RLC AC signal in Zig
+  '''
+  zig_rlc = []
+  for i in range(0, len(zig)):
+    zig_rlc.append(RLC(zig[i]))
+  return zig_rlc
+
+def DeRLC_zig(zig_rlc):
+  '''
+  DeRLC AC signal in Zig
+  '''
+  dezig = []
+  for i in range(0, len(zig_rlc)):
+    dezig.append(DeRLC(zig_rlc[i]))
+  return dezig
+
+def DPCM(zig):
+  '''
+  DPCM DC signal in Zig
+  '''
+  dpcm = []
+  d = zig[0][0]
+  dpcm.append(d)
+  for i in range(1, len(zig)):
+    dpcm.append(zig[i][0]-d)
+  return dpcm
+
+def DeDPCM(dpcm):
+  '''
+  DeDPCM DC signal from Zig
+  '''
+  DC = []
+  d = dpcm[0]
+  DC.append(d)
+  for i in range(1, len(dpcm)):
+    DC.append(dpcm[i]+d)
+  return DC
+
+def Merge_RLC_DPCM(rlc, dpcm):
+  '''
+  Merge the RLC & DPCM into Zig
+  '''
+  zig = []
+  for i in range(0, len(dpcm)):
+    temp = []
+    temp.append(dpcm[i])
+    for j in range(0, len(rlc[i])):
+      temp.append(rlc[i][j])
+    zig.append(temp)
+  return zig
+
+
+ProcessLog(' Start Read Image ')
 # Origin photo
-img = cv.imread('../img/cartoon.jpg', cv.IMREAD_COLOR)
+imgPath = '../img/cartoon.jpg'
+img = cv.imread(imgPath, cv.IMREAD_COLOR)
 img = cv.resize(img,(1000,720),interpolation = cv.INTER_CUBIC)
 img_c = copy.deepcopy(img)
 # img_copy = cv.cvtColor(img_c, cv.COLOR_BGR2YCR_CB)
+ProcessLog(' End Read Image ')
 
+
+ProcessLog(' Start Transform Color Space ')
 # Transform rgb to YCbCr
-my_ycbcr = RGBtoYCbCrSpace(img)
-# idct_img = RGBtoYCbCrSpace(img)
+ycbcr_img = RGBtoYCbCrSpace(img)
+ProcessLog(' End Transform Color Space ')
 
+
+ProcessLog(' Start Chroma Sampling ')
 # Chroma sample image
-sample_img = chromaSample(my_ycbcr)
-# idct_img = chromaSample(my_ycbcr)
+sample_img = chromaSample(ycbcr_img)
+ProcessLog(' End Chroma Sampling ')
 
+
+ProcessLog(' Start DCT ')
 # DCT image
 dct_img = DCTImg(sample_img)
+ProcessLog(' End DCT ')
 
-# # Quantify image
+
+ProcessLog(' Start Quantization ')
+# Quantify image
 quant_img = QuantifyImg(dct_img)
+ProcessLog(' End Quantization ')
 
-# # Dequantify image
+ProcessLog(' Start ZigZag Scan ')
+# Zigzag scan image
+Y_zig, Cb_zig, Cr_zig = ZigZagImg(quant_img)
+ProcessLog(' End ZigZag Scan ')
+
+
+ProcessLog(' Start RLC for AC Signal ')
+# RLC for AC
+Y_rlc = RLC_Zig(Y_zig)
+Cb_rlc = RLC_Zig(Cb_zig)
+Cr_rlc = RLC_Zig(Cr_zig)
+ProcessLog(' End RLC for AC Signal ')
+
+
+ProcessLog(' Start DPCM for DC Signal ')
+# DPCM for DC
+Y_dpcm = DPCM(Y_zig)
+Cb_dpcm = DPCM(Cb_zig)
+Cr_dpcm = DPCM(Cr_zig)
+ProcessLog(' End DPCM for DC Signal ')
+
+ProcessLog(' Start Entropy Coding for RLC ')
+# Entropy Coding for RLC
+# Y_rlc = RLC_Zig(Y_zig)
+# Cb_rlc = RLC_Zig(Cb_zig)
+# Cr_rlc = RLC_Zig(Cr_zig)
+ProcessLog(' End Entropy Coding for RLC ')
+
+
+ProcessLog(' Start Entropy Coding for DPCM ')
+# Entropy Coding for DPCM
+# Y_dpcm = DPCM(Y_zig)
+# Cb_dpcm = DPCM(Cb_zig)
+# Cr_dpcm = DPCM(Cr_zig)
+ProcessLog(' End Entropy Coding for DPCM ')
+
+
+ProcessLog(' Start DeRLC for AC Signal ')
+# DeRLC for AC
+Y_derlc = DeRLC_zig(Y_rlc)
+Cb_derlc = DeRLC_zig(Cb_rlc)
+Cr_derlc = DeRLC_zig(Cr_rlc)
+ProcessLog(' End DeRLC for AC Signal ')
+
+
+ProcessLog(' Start DeDPCM for DC Signal ')
+# DeDPCM for DC
+Y_dedpcm = DeDPCM(Y_dpcm)
+Cb_dedpcm = DeDPCM(Cb_dpcm)
+Cr_dedpcm = DeDPCM(Cr_dpcm)
+ProcessLog(' End DeDPCM for DC Signal ')
+
+
+ProcessLog(' Start Recover ZigZag from DPCM and RLC ')
+# Merge DeDPCM and DeRLC
+Y_recover = Merge_RLC_DPCM(Y_derlc, Y_dedpcm)
+Cb_recover = Merge_RLC_DPCM(Cb_derlc, Cb_dedpcm)
+Cr_recover = Merge_RLC_DPCM(Cr_derlc, Cr_dedpcm)
+ProcessLog(' End Recover ZigZag from DPCM and RLC ')
+
+
+ProcessLog(' Start DeZigZag ')
+# DeZigzag scan image
+quant_img = DeZigZagImg(quant_img, Y_recover, Cb_recover, Cr_recover)
+ProcessLog(' End DeZigZag ')
+
+
+ProcessLog(' Start DeQuantization ')
+# Dequantify image
 dequant_img = DeQuantifyImg(quant_img)
+ProcessLog(' End DeQuantization ')
 
+
+ProcessLog(' Start IDCT ')
 # IDCT image
 idct_img = IDCTImg(dequant_img)
-# idct_img = IDCTImg(dct_img)
+ProcessLog(' End IDCT ')
 
-# # reconstruct image
+
+ProcessLog(' Start Reconstruct Image into RGB')
+# reconstruct image
 reconstruct_img = YCbCrtoRGBSpace(idct_img)
+ProcessLog(' End Reconstruct Image into RGB')
 
-a,A,b,B,c,C=LossDegree(img_c, reconstruct_img)
-print 'cartoon.jpg'
-print 'R Channel MSE: ', a, 'R Channel SNR: ', A
-print 'G Channel MSE: ', b, 'G Channel SNR: ', B
-print 'B Channel MSE: ', c, 'B Channel SNR: ', C
 
-# cv.imshow('my_img', reconstruct_img)
-# cv.imshow('origin_img', img_c)
-# cv.waitKey(0)
-# cv.destroyAllWindows()
+ProcessLog(' Start Calculating Distortion ')
+# Distortion Evaluation
+Distortion(img_c, reconstruct_img, imgPath)
+ProcessLog(' End Calculating Distortion ')
+
+
+ProcessLog(' Display Result Image')
+cv.imshow('my_img', reconstruct_img)
+cv.imshow('origin_img', img_c)
+cv.waitKey(0)
+cv.destroyAllWindows()
